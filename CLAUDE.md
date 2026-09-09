@@ -149,7 +149,10 @@ those that only create issues/PRDs/notifications do NOT need it.
   target repos table).
 
 ## dev-loop skills (`.claude/skills/`) — apply them per stage
-Opinionated workflows (adapted from `addyosmani/agent-skills`, MIT) that the routines MUST apply:
+Opinionated workflows that the routines MUST apply. 8 of them are adapted from
+[Addy Osmani's `agent-skills`](https://github.com/addyosmani/agent-skills) (MIT — attribution in
+each skill's frontmatter; `review-pr` and `setup-dev-loop` are original to this repo). See
+"The skills" in the README for how they complement the loop:
 | Skill | When / which routine |
 |---|---|
 | `planning-and-task-breakdown` | Building the "## Implementation plan" (R1 builder, R7 refiner) and reviewing/editing the plan in Gate A (R5) |
