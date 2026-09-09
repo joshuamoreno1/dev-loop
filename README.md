@@ -290,6 +290,42 @@ themselves), the routine detects it and steps aside. Idempotent. See the `PREFLI
 
 ---
 
+## The skills — the engineering discipline behind the loop
+
+The routines are only the **orchestration**: a state machine that decides *when* things happen.
+The *quality* of what they produce comes from the workflow skills in
+[`.claude/skills/`](./.claude/skills), which every routine is required to apply at its stage of
+the loop (the mapping lives in [`CLAUDE.md`](./CLAUDE.md)).
+
+**Credit where it's due:** 8 of the 10 skills are adapted from
+**[Addy Osmani's `agent-skills`](https://github.com/addyosmani/agent-skills)** (MIT) — a
+collection of opinionated engineering workflows for coding agents. This repo doesn't replace
+that work; it **complements it**: `agent-skills` supplies the per-task discipline (how to plan,
+implement, test, doubt, review), and the dev-loop supplies the machinery that decides **when
+each skill fires and what evidence it must leave behind** (PRDs, plan gates, labels, verdicts).
+The adaptation wires each skill to that machinery — the loop's entities ("## Implementation
+plan", PRD issues, `claude/` branches, gate verdict protocols) and its review modes. Each
+adapted skill carries the attribution in its own frontmatter.
+
+| Skill | Origin | Where it plugs into the loop |
+|---|---|---|
+| `planning-and-task-breakdown` | agent-skills (adapted) | R1/R7 build the "## Implementation plan" (1 item = 1 PR); R5 edits it in Gate A |
+| `idea-refine` | agent-skills (adapted) | R7 turns the owner's `refine:` feedback into a better PRD, async |
+| `source-driven-development` | agent-skills (adapted) | R2 verifies APIs/signatures in real code before writing — no hallucinated calls |
+| `test-driven-development` | agent-skills (adapted) | R2 writes/runs the repo's tests with every change |
+| `incremental-implementation` | agent-skills (adapted) | R2 keeps each plan item a small, reversible PR |
+| `doubt-driven-development` | agent-skills (adapted) | R2 pre-PR and R0/R5 in review: adversarial "does it REALLY do what it claims?" |
+| `code-simplification` | agent-skills (adapted) | R0/R5 review lens: clarity without behavior change |
+| `security-and-hardening` | agent-skills (adapted) | R0/R5 review lens: secrets, tenant isolation, OWASP, agent/LLM risks |
+| `review-pr` | original to this repo | The R0/R5 review standard: severities, verdicts, architecture adherence |
+| `setup-dev-loop` | original to this repo | The guided bootstrap wizard you run after creating your copy |
+
+If you extend the loop, keep this split: put *how to do the work well* in a skill, and *when it
+runs and what state it moves* in a routine prompt. And if you adapt more of `agent-skills`,
+carry the attribution with it.
+
+---
+
 ## 🚀 Setting up the loop (from the template)
 
 > **The short way:** create your **private copy** via "Use this template", open **Claude Code**
@@ -380,7 +416,7 @@ dev-loop/
 ├── README.md                    # this file — how the loop works
 ├── .claude/
 │   ├── agents/                  # git-pr, request-review — branch/PR flow and the loop's gate
-│   └── skills/                  # opinionated workflows (adapted from addyosmani/agent-skills, MIT)
+│   └── skills/                  # opinionated workflows (8 adapted from addyosmani/agent-skills, MIT — see "The skills")
 │       ├── setup-dev-loop/      # guided setup wizard (run on fork)
 │       ├── review-pr/           # principal-engineer + architect review standard (R0/R5)
 │       ├── security-and-hardening/      # security lens: secrets, tenant isolation, OWASP (R0/R5)
@@ -449,5 +485,7 @@ DRY_RUN=1 scripts/dl.sh prd-label 14 prd:refine        # print the call without 
 
 ## License
 
-MIT — see [LICENSE](./LICENSE). The skills under `.claude/skills/` are adapted from
-[addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) (MIT).
+MIT — see [LICENSE](./LICENSE). Eight of the skills under `.claude/skills/` are adapted from
+[Addy Osmani's `agent-skills`](https://github.com/addyosmani/agent-skills) (MIT) — see
+["The skills"](#the-skills--the-engineering-discipline-behind-the-loop) for the full credit and
+the per-skill origin; `review-pr` and `setup-dev-loop` are original to this repo.

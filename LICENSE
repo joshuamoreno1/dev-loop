@@ -12,8 +12,11 @@ furnished to do so, subject to the following conditions:
 The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
 
-Portions of the skills under .claude/skills/ are adapted from
-addyosmani/agent-skills, © Addy Osmani, MIT License.
+Eight of the skills under .claude/skills/ (planning-and-task-breakdown, idea-refine,
+source-driven-development, test-driven-development, incremental-implementation,
+doubt-driven-development, code-simplification, security-and-hardening) are adapted from
+addyosmani/agent-skills (https://github.com/addyosmani/agent-skills),
+© Addy Osmani, MIT License.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,

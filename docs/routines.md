@@ -9,7 +9,7 @@
 > (R3 needs the target repos to resolve the `ready-for-review` PRs, which live there, not in the hub.)
 > The label→column sync of the Project board is handled by `.github/workflows/project-status-sync.yml`
 > (secret `DEVLOOP_PROJECT_TOKEN`).
-> **Skills** (`.claude/skills/`, adapted from addyosmani/agent-skills, MIT): R1/R7 use
+> **Skills** (`.claude/skills/` — 8 adapted from [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills), MIT; see "The skills" in the README): R1/R7 use
 > `planning-and-task-breakdown` + `idea-refine`; R2 uses `source-driven-development` +
 > `test-driven-development` + `incremental-implementation` + `doubt-driven-development`; R0/R5 use
 > `review-pr` + `security-and-hardening` + `code-simplification` + `doubt-driven-development`
