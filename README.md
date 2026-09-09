@@ -282,6 +282,15 @@ secrets/access) is the **source of truth after**; and **Auto-fix** closes the lo
 failures. Routines stay short and never need your secrets. Details in
 [`docs/routines.md`](./docs/routines.md#environments-and-validation).
 
+> **⚠️ The quality of the loop's PRs is capped by your CI.** The agent review gates (A/B) are
+> probabilistic judgment; your pipelines are the only **deterministic** review the generated
+> code gets. A target repo with complete CI/CD — lint, typecheck, full test suite, build,
+> security scanning, and ideally deploy-to-staging — turns "CI green" into a real guarantee and
+> gives Auto-fix something concrete to converge against. A repo with thin or no CI gives the
+> loop nothing to push back with: PRs will look "green" while only the cheap pre-PR checks and
+> the review gate stand between generated code and your main branch. **Before pointing the loop
+> at a repo, invest in its pipeline** — it pays off for every PR after, human or agent.
+
 ### Cross-cutting rule — the owner's action always wins
 Every routine runs a **PREFLIGHT** before acting: it re-reads current state and applies
 *compare-and-set*. If the owner got there first (merged, moved the label, implemented it
@@ -399,6 +408,10 @@ hardcoded IDs, so it survives board recreations). From then on the loop runs wit
 ### Prerequisites
 - A Claude plan with Claude Code on the web enabled (Routines is in research preview).
 - GitHub connected via OAuth (GitHub App). **No PAT** for the routines themselves.
+- **Target repos with real CI/CD pipelines** (lint + tests + build on every PR, at minimum).
+  This is not optional polish: CI is the loop's only deterministic gate for generated code —
+  see "Environments and validation" above. The setup wizard audits this per repo and warns you
+  where coverage is thin.
 
 ### Security
 - Keep your copy **private** (it holds your roster, channels and repo map — not credentials,

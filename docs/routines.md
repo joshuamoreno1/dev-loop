@@ -753,6 +753,13 @@ it would duplicate what your GitHub Actions already do well.
    services, on your runners that already have the access. The routine does NOT replicate this.
 3. **Auto-fix:** if CI fails, Claude investigates, fixes and pushes; CI re-runs. Closes the loop.
 
+**This pattern only holds if the CI is real.** The review gates (A/B) are probabilistic judgment;
+the target repo's pipeline is the only **deterministic** review the generated code gets, and the
+only signal Auto-fix can converge against. A repo whose CI doesn't run lint + full tests + build
+on every PR makes "green CI" in the Gate B criteria meaningless there — complete the pipeline
+before (or as the first PRD of) pointing the loop at that repo. The setup wizard audits this per
+repo and records it in the CLAUDE.md repos table.
+
 **Each routine's environment config:** **Trusted** network (public registries) + a per-language
 **setup script** to install the repo's public deps. Do **NOT** put production secrets in env vars.
 
