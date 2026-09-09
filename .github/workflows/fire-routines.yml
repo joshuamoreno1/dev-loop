@@ -1,0 +1,71 @@
+name: Fire routines on owner actions
+
+# OPTIONAL wiring for the loop's event-driven path (/fire). Maps the owner's
+# GitHub actions on the hub to instant routine runs, instead of waiting for the
+# reconcile cron:
+#
+#   label prd:approved added  → fires R5 (Gate A kickoff)
+#   label prd:refine added    → fires R7 (refinement)
+#   comment starting "refine:"→ fires R7 (refinement)
+#
+# Setup: in the routines UI (claude.ai/code/routines) enable the "Call via API"
+# trigger on R5 and R7, copy each routine's fire endpoint, and store them as the
+# repo secrets FIRE_URL_R5 and FIRE_URL_R7. Missing secrets skip silently — the
+# reconcile cron still covers everything, just slower.
+#
+# ⚠️ The request below sends a JSON {"text": ...} POST. The "Call via API" panel
+# shows the exact curl for your routine (URL + auth + payload shape) — if it
+# differs, mirror that snippet here. The text is only a HINT: routines treat the
+# <routine-fire-payload> as untrusted data and re-read GitHub state (PREFLIGHT).
+#
+# Not covered here (by design):
+#   - Slack-side actions (answering a triage, leaving a #dev-loop tag): GitHub
+#     can't see them. Wire your own automation to FIRE_URL_R1 / FIRE_URL_R4, or
+#     let the reconcile cron pick them up.
+#   - PR merges: they happen in the TARGET repos, not the hub. Add a copy of the
+#     merge job below to each target repo (with FIRE_URL_R5) if you want instant
+#     prd:done reconciles; otherwise R5's cron handles it.
+
+on:
+  issues:
+    types: [labeled]
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+jobs:
+  fire:
+    # Only the owner's actions fire; other users' labels/comments wait for cron.
+    if: >
+      (github.event_name == 'issues' &&
+        (github.event.label.name == 'prd:approved' || github.event.label.name == 'prd:refine')) ||
+      (github.event_name == 'issue_comment' &&
+        startsWith(github.event.comment.body, 'refine:'))
+    runs-on: ubuntu-latest
+    env:
+      FIRE_URL_R5: ${{ secrets.FIRE_URL_R5 }}
+      FIRE_URL_R7: ${{ secrets.FIRE_URL_R7 }}
+      ISSUE: ${{ github.event.issue.number }}
+      LABEL: ${{ github.event.label.name }}
+      EVENT: ${{ github.event_name }}
+      ACTOR: ${{ github.actor }}
+    steps:
+      - name: Fire the matching routine
+        run: |
+          fire() { # fire <url> <hint-text>
+            local url="$1" text="$2"
+            if [ -z "$url" ]; then
+              echo "::notice::fire URL secret not configured; the reconcile cron will cover this event"
+              return 0
+            fi
+            # Never fail the workflow on a fire error: cron is the safety net.
+            curl -sS -X POST -H "Content-Type: application/json" \
+              -d "$(jq -n --arg t "$text" '{text: $t}')" "$url" \
+              || echo "::warning::fire call failed; the reconcile cron will cover it"
+          }
+          case "$EVENT:$LABEL" in
+            issues:prd:approved) fire "$FIRE_URL_R5" "$ACTOR approved PRD #$ISSUE (label prd:approved) — run Gate A for it" ;;
+            issues:prd:refine)   fire "$FIRE_URL_R7" "$ACTOR requested refinement of PRD #$ISSUE (label prd:refine)" ;;
+            issue_comment:*)     fire "$FIRE_URL_R7" "$ACTOR left a refine: comment on PRD #$ISSUE" ;;
+          esac

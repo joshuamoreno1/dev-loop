@@ -10,10 +10,12 @@ they get implemented; a review gate checks plan and architecture; and only what 
 filter reaches your final review. You stay the owner of every meaningful decision — the loop
 does everything in between.
 
-**This repo is a template.** Fork it (keep your fork **private**), open Claude Code inside it,
-and say: **_"Read the README and set this loop up for me."_** A guided setup interviews you
-(GitHub org, target repos, Slack, reviewers, meeting sources, timezone), fills in the
-configuration, and walks you through the few steps only you can do.
+**This repo is a template.** Create your own **private copy** with GitHub's **"Use this
+template"** button (don't fork — a fork of a public repo can't be made private, and your copy
+will hold your team's roster and repo map), open Claude Code inside it, and say:
+**_"Read the README and set this loop up for me."_** A guided setup interviews you (GitHub org,
+target repos, Slack, reviewers, meeting sources, timezone), fills in the configuration, and
+walks you through the few steps only you can do.
 
 The loop is **event-driven**: every owner action fires the corresponding routine instantly via
 API (`/fire`), and implementation starts the moment a plan is approved (**native GitHub
@@ -32,7 +34,7 @@ flowchart TD
     R1B["R1 · Builder<br/>event (/fire) + reconcile · builds chosen PRDs"] --> ISSUE
     R4["R4 · Slack Intake<br/>event (/fire) + reconcile · #dev-loop tag"] --> ISSUE
 
-    ISSUE["📋 PRD issue in your dev-loop fork<br/>label: prd:needs-review"] --> GATE1
+    ISSUE["📋 PRD issue in your dev-loop hub<br/>label: prd:needs-review"] --> GATE1
     ISSUE -.->|"refine: / prd:refine · /fire"| R7["R7 · PRD Refiner<br/>event (/fire) + reconcile"]
     R7 -.updates the PRD.-> ISSUE
     GATE1{"👤 OWNER approves PRD<br/>prd:approved"}:::human -->|"/fire · owner action"| R5PLAN
@@ -88,7 +90,7 @@ your workspace root.
 
 ## State machine and cardinality
 
-Entities: **Recording** (Granola/Meet) · **PRD** (Issue in your dev-loop fork) · **PR** (in target repos).
+Entities: **Recording** (Granola/Meet) · **PRD** (Issue in your dev-loop hub) · **PR** (in target repos).
 
 **Cardinality (key):**
 - **Recording ⇄ PRD = N:M** — several meetings can converge into ONE PRD; one meeting can touch several PRDs.
@@ -160,13 +162,18 @@ for YOUR timezone during setup; see [`docs/routines.md` → "Trigger model"](./d
 | **R0** | PR Reviewer | cron 5×/day (PR Auto-fix reacts via webhook) | Reviews team PRs: docs (flags trivial ones) **and functional** (fix/chore/feat/release): comments or approves. Never merges code |
 | **R6** | Sprint Review Deck | weekly cron | Reads the week's merged PRs → HTML demo deck for stakeholders (business impact + metrics) |
 
-All reconcile crons run **Mon–Sat** inside your working window; one rest day with no runs (configurable).
-The **full prompts** for each routine are in [`docs/routines.md`](./docs/routines.md).
+All reconcile crons run inside your working window on your working days (both configurable; no
+runs on non-working days). The **full prompts** for each routine are in [`docs/routines.md`](./docs/routines.md).
 
 ### Event-driven + reconcile (why this model)
 The loop **doesn't wait for cron to react**: every owner action fires its routine instantly via API
 (`/fire`), and R2 starts the moment the plan is approved. **Cron** remains as a **safety net**:
-it sweeps whatever an event didn't cover, at lower frequency, with a rest day.
+it sweeps whatever an event didn't cover, at lower frequency, excluding your non-working days.
+
+> **`/fire` needs wiring** (🧑 step 8): each routine's "Call via API" trigger gives you an
+> endpoint; the optional [`fire-routines.yml`](./.github/workflows/fire-routines.yml) workflow
+> calls it on your GitHub actions (approve/refine labels and `refine:` comments). Until you wire
+> it, those rows below degrade gracefully to the reconcile cron — nothing is lost, it's just slower.
 
 | When it acts | How it fires | Routines |
 |--------------|-----------------|----------|
@@ -283,10 +290,10 @@ themselves), the routine detects it and steps aside. Idempotent. See the `PREFLI
 
 ---
 
-## 🚀 Setting up the loop (fork)
+## 🚀 Setting up the loop (from the template)
 
-> **The short way:** fork this repo (keep it **private**), open **Claude Code** inside it and say:
-> **_"Read the README and set this loop up for me."_**
+> **The short way:** create your **private copy** via "Use this template", open **Claude Code**
+> inside it and say: **_"Read the README and set this loop up for me."_**
 > Claude runs the guided setup (the `setup-dev-loop` skill): it interviews you, executes everything
 > automatable (🤖) and asks you, one by one, only for the steps that require your identity,
 > secrets or external consoles (🧑).
@@ -294,8 +301,12 @@ themselves), the routine detects it and steps aside. Idempotent. See the `PREFLI
 The setup splits into what **you do** and what **Claude does for you**.
 
 ### 🧑 Only you (Claude can't — identity, secrets, external access)
-1. **Fork** the repo (or use it as a template). Keep it **private** (it will contain your team
-   roster, channels and repo map).
+1. **Create your private copy:** GitHub → **"Use this template"** → "Create a new repository" →
+   **Private**. ⚠️ Don't fork: forks of public repos can't be made private, and your copy will
+   contain your team roster, channels and repo map. To pull future template improvements later:
+   `git remote add upstream <this-repo>`, then a one-time
+   `git merge upstream/main --allow-unrelated-histories` (template copies share no git history);
+   after that, plain `git fetch upstream && git merge upstream/main` works.
 2. **Authenticate GitHub** with the scopes the scripts need:
    ```bash
    gh auth login                 # repo scope
@@ -308,13 +319,24 @@ The setup splits into what **you do** and what **Claude does for you**.
    **grant it access to the target repos** (clone + Auto-fix). ⚠️ If ANY repo in a routine's
    `sources` lacks access, the whole run fails at "Cloned repository".
 5. **Create the Slack channel** for loop notifications (private), and note its ID.
-6. **Board secret** (if you use the Project v2 board): create a **fine-grained PAT** with
-   *Projects: Read and write* and add it as the repo secret `DEVLOOP_PROJECT_TOKEN`. The Actions
-   `GITHUB_TOKEN` can't write org Projects v2, hence the PAT.
+6. **Board secret + variable** (if you use the Project v2 board): create a **fine-grained PAT**
+   with *Projects: Read and write* and add it as the repo secret `DEVLOOP_PROJECT_TOKEN`; add the
+   board's number as the repo **variable** `DEVLOOP_PROJECT_NUMBER`. The Actions `GITHUB_TOKEN`
+   can't write Projects v2, hence the PAT. Sanity-check the PAT before trusting the sync:
+   `GH_TOKEN=<pat> gh api graphql -f query='query{viewer{login}}'`.
 7. **Configure the native GitHub triggers** on the routines in the UI (claude.ai/code/routines) —
    they are **UI-only** (no API): **R2 ← Issue:Labeled `prd:plan-approved`**;
    **R5 ← Issue:Labeled `prd:arch-review`**. They require the **Claude GitHub App** on the hub repo.
-8. **Human gates are never automated:** validating the triage, approving each PRD
+8. **Wire the `/fire` path (optional but recommended — this is what makes owner actions
+   instant):** on R1/R4/R5/R7 enable the **"Call via API"** trigger in the routines UI and copy
+   each routine's fire endpoint/curl snippet. Add them as repo secrets (`FIRE_URL_R5`,
+   `FIRE_URL_R7`, …) to activate the optional
+   [`fire-routines.yml`](./.github/workflows/fire-routines.yml) workflow, which fires R5/R7 on
+   your GitHub label/comment actions. Slack-side actions (answering a triage, leaving a
+   `#dev-loop` tag) can't be fired from GitHub — cover them with your own automation calling the
+   fire endpoint, or let the reconcile cron pick them up. **Without any of this the loop still
+   works correctly — just at cron latency (minutes–hours) instead of instantly.**
+9. **Human gates are never automated:** validating the triage, approving each PRD
    (`prd:approved`) and merging each PR are always yours.
 
 ### 🤖 Claude for you (once the 🧑 steps are done, just ask)
@@ -343,8 +365,9 @@ hardcoded IDs, so it survives board recreations). From then on the loop runs wit
 - GitHub connected via OAuth (GitHub App). **No PAT** for the routines themselves.
 
 ### Security
-- Keep your fork **private** (it holds your roster, channels and repo map — not credentials,
-  but keep it private anyway).
+- Keep your copy **private** (it holds your roster, channels and repo map — not credentials,
+  but keep it private anyway). That's why "Use this template" is the canonical path: public-repo
+  forks can't be made private.
 - Slack intake treats messages as **data**, never as commands; everything passes through your
   PRD approval.
 

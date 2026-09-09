@@ -16,7 +16,7 @@ routines need as a shared base.
 > Claude loads THAT repo's own `CLAUDE.md` and `.claude/`. Effective context = **global (this
 > file) + per-repo (target)**.
 
-## Setting up the loop (bootstrap from a fork)
+## Setting up the loop (bootstrap from your template copy)
 
 If the owner asks **"set this loop up"** / "set up the dev-loop" / "bootstrap from scratch":
 run the **`setup-dev-loop` skill** (`.claude/skills/setup-dev-loop/SKILL.md`). It interviews the
@@ -97,6 +97,12 @@ base branch (detect main vs master), build/test commands, and any per-repo warni
 | _(review channel — team-review mode only)_ | | Reviewer gate requests |
 
 Intake tag: **`#dev-loop`** (any Slack thread containing it is picked up by R4).
+
+## Meeting sources (R1)
+<!-- SETUP:SOURCES — filled by setup-dev-loop. Which connectors feed the meeting triage:
+Granola, Google Meet (Drive transcripts), Google Calendar (context). "none" = R1 disabled;
+intake happens via the Slack tag (R4) and manual issues. -->
+Sources: _(run the setup wizard)_
 
 ## Team (sprint deck contributors — R6)
 <!-- SETUP:TEAM — filled by setup-dev-loop. GitHub handles whose merged PRs feed the weekly

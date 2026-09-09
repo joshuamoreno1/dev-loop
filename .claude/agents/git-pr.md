@@ -43,6 +43,10 @@ Part of dev-loop#<n>"   # if it belongs to a PRD — NEVER "Closes" (don't close
 ```
 Include the session link in the body. Multi-repo: one PR per repo, cross-linked in the bodies.
 
+> **No `gh` on this machine?** (routine VMs may only expose `$GITHUB_TOKEN`): use the REST API —
+> `curl -sS -X POST -H "Authorization: Bearer $GITHUB_TOKEN" -d '{"title":...,"head":...,"base":...,"body":...}' https://api.github.com/repos/<owner>/<repo>/pulls`
+> — and `scripts/dl.sh` for hub issue operations. Same flow, different transport.
+
 ## Rules
 - NEVER push to main/master. Only `claude/` branches.
 - NEVER merge — merging belongs to the human owner.

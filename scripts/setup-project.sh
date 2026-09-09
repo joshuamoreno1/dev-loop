@@ -98,7 +98,8 @@ resolve_project() {
     return
   fi
   local found
-  found="$(gh project list --owner "$OWNER" --format json \
+  # --limit: gh defaults to 30 projects and could miss the board during discovery.
+  found="$(gh project list --owner "$OWNER" --limit 100 --format json \
     | jq -c --arg t "$TITLE" 'first(.projects[] | select(.title==$t)) // empty')"
   if [ -n "$found" ]; then echo "$found"; return; fi
   echo "No Project '$TITLE' exists in $OWNER." >&2
