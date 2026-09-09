@@ -11,7 +11,8 @@
 #   scripts/dl.sh prds [state]                    PRDs by state (or all, ordered by lifecycle)
 #   scripts/dl.sh show <n>                         Issue detail (labels, state, body)
 #   scripts/dl.sh prd-prs <n>                      PRs linked to a PRD (searches "<repo>#<n>" cross-references)
-#   scripts/dl.sh resolve-triage <n> "<decision>" ["note"]   Comment + triage:done + close
+#   scripts/dl.sh resolve-triage <n> "<decision>" ["note"]   Record your selection as a comment
+#                                                 (R1 Builder consumes it, builds, then closes)
 #   scripts/dl.sh prd-label <n> <prd:state> ["note"]         Compare-and-set of the state label
 #   scripts/dl.sh approve <n> ["note"]            Shortcut: prd-label <n> prd:approved
 #   scripts/dl.sh comment <n> "<text>"            Comment on an issue
@@ -26,38 +27,41 @@ set -euo pipefail
 TOKEN="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
 DRY_RUN="${DRY_RUN:-0}"
 
-# --- resolve target repo (env > gh > git remote; never a silent default) -----
-REPO="${REPO:-}"
-if [ -z "$REPO" ]; then
-  REPO="$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || true)"
-fi
-if [ -z "$REPO" ]; then
-  origin_url="$(git remote get-url origin 2>/dev/null || true)"
-  if [ -n "$origin_url" ]; then
-    # Supports git@host:owner/repo(.git) and https://host/owner/repo(.git)
-    REPO="$(sed -E 's#^(git@[^:]+:|[a-zA-Z+]+://[^/]+/)##; s#\.git$##' <<<"$origin_url")"
-  fi
-fi
-if [ -z "$REPO" ] || [[ "$REPO" != */* ]]; then
-  echo "ERROR: could not determine the target repository." >&2
-  echo "Usage: REPO=<owner>/<repo> scripts/dl.sh <command>   (or run inside a clone with an 'origin' remote)" >&2
-  exit 1
-fi
-API="https://api.github.com/repos/$REPO"
-REPO_NAME="${REPO#*/}"
-
 # Lifecycle order (README § "State machine"). Used to sort `prds`.
 PRD_STATES=(
   prd:needs-review prd:refine prd:approved prd:plan-review prd:plan-approved
   prd:building prd:arch-review prd:ready-for-review prd:blocked prd:done prd:discarded
 )
-# States that require owner action (highlighted in `status`).
-OWNER_ACTION=(triage:pending prd:needs-review prd:ready-for-review prd:blocked)
 
 die() { echo "ERROR: $*" >&2; exit 1; }
-[ -n "$TOKEN" ] || die "GITHUB_TOKEN/GH_TOKEN missing from the environment"
-command -v jq   >/dev/null || die "jq missing"
-command -v curl >/dev/null || die "curl missing"
+
+# Environment + repo resolution, deferred so `help` works with no token/remote.
+resolve_env() {
+  [ -n "$TOKEN" ] || die "GITHUB_TOKEN/GH_TOKEN missing from the environment"
+  command -v jq   >/dev/null || die "jq missing"
+  command -v curl >/dev/null || die "curl missing"
+
+  # --- resolve target repo (env > gh > git remote; never a silent default) ---
+  REPO="${REPO:-}"
+  if [ -z "$REPO" ]; then
+    REPO="$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || true)"
+  fi
+  if [ -z "$REPO" ]; then
+    local origin_url
+    origin_url="$(git remote get-url origin 2>/dev/null || true)"
+    if [ -n "$origin_url" ]; then
+      # Supports git@host:owner/repo(.git) and https://host/owner/repo(.git)
+      REPO="$(sed -E 's#^(git@[^:]+:|[a-zA-Z+]+://[^/]+/)##; s#\.git$##' <<<"$origin_url")"
+    fi
+  fi
+  if [ -z "$REPO" ] || [[ "$REPO" != */* ]]; then
+    echo "ERROR: could not determine the target repository." >&2
+    echo "Usage: REPO=<owner>/<repo> scripts/dl.sh <command>   (or run inside a clone with an 'origin' remote)" >&2
+    exit 1
+  fi
+  API="https://api.github.com/repos/$REPO"
+  REPO_NAME="${REPO#*/}"
+}
 
 # --- HTTP helpers ---------------------------------------------------------
 _curl() {
@@ -131,7 +135,7 @@ cmd_status() {
   local st
   for st in prd:refine prd:approved prd:plan-review prd:plan-approved prd:building prd:arch-review; do
     out="$(_by_label "$st")"
-    [ -n "$out" ] && { echo "▸ $st:"; echo "$out"; }
+    if [ -n "$out" ]; then echo "▸ $st:"; echo "$out"; fi
   done
 }
 
@@ -157,7 +161,7 @@ cmd_prds() {
   local st rows
   for st in "${PRD_STATES[@]}"; do
     rows="$(_by_label "$st")"
-    [ -n "$rows" ] && { echo "▸ $st"; echo "$rows"; }
+    if [ -n "$rows" ]; then echo "▸ $st"; echo "$rows"; fi
   done
 }
 
@@ -221,12 +225,11 @@ cmd_resolve_triage() {
   local body="$decision"; [ -n "$note" ] && body="$decision — $note"
   cmd_comment "$n" "$body"
 
-  # Replaces triage:pending with triage:done, preserves the rest.
-  local kept; kept="$(echo "$issue" \
-    | jq -c '[.labels[].name | select(. != "triage:pending")] + ["triage:done"]')"
-  api_write PUT "/issues/$n/labels" "{\"labels\":$kept}" && echo "✓ label → triage:done"
-  api_write PATCH "/issues/$n" '{"state":"closed","state_reason":"not_planned"}' \
-    && echo "✓ #$n closed"
+  # Deliberately KEEP triage:pending and leave the issue open: R1's Builder only
+  # processes triage:pending, reads the decision (Slack thread or this comment),
+  # builds the chosen PRDs, and is the one that flips triage:done + closes.
+  # Marking done here would make the Builder skip the triage and never build.
+  echo "✓ decision recorded on #$n — R1 Builder will pick it up (issue stays triage:pending)"
 }
 
 cmd_prd_label() {
@@ -244,7 +247,7 @@ cmd_prd_label() {
     '[.[] | select(startswith("prd:")|not)] + [$N]')"
   echo "  labels: $labels → $kept"
   api_write PUT "/issues/$n/labels" "{\"labels\":$kept}" && echo "✓ #$n → $new"
-  [ -n "$note" ] && cmd_comment "$n" "$note"
+  if [ -n "$note" ]; then cmd_comment "$n" "$note"; fi
 }
 
 # Prints the header comment block (robust to length changes).
@@ -252,6 +255,7 @@ cmd_help() { awk 'NR>1 && /^#/{sub(/^# ?/,"");print;next} NR>1{exit}' "$0"; }
 
 # --- dispatch -------------------------------------------------------------
 cmd="${1:-help}"; shift || true
+case "$cmd" in help|-h|--help) ;; *) resolve_env ;; esac
 case "$cmd" in
   status)         cmd_status "$@" ;;
   triage)         cmd_triage "$@" ;;

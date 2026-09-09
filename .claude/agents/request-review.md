@@ -13,6 +13,9 @@ model: opus
 gh pr checks <N> --repo <owner/repo>
 gh pr view <N> --repo <owner/repo> --json state,reviews,comments,mergeable
 ```
+- No `gh` on this machine? (routine VMs may only expose `$GITHUB_TOKEN`): same reads via REST —
+  `curl -sS -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/repos/<owner>/<repo>/pulls/<N>`
+  and `/commits/<sha>/check-runs` for CI status.
 - Green CI is mandatory. Checks running → wait and re-check.
 - Failing checks → read the logs, fix, push to the PR's `claude/` branch, repeat until green.
 - Pending comments (humans or bots) → address them, push, re-verify.

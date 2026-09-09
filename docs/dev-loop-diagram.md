@@ -13,7 +13,7 @@ flowchart TD
     R1B["R1 · Builder<br/>event (/fire) + reconcile · builds chosen PRDs"] --> ISSUE
     R4["R4 · Slack Intake<br/>event (/fire) + reconcile · #dev-loop tag"] --> ISSUE
 
-    ISSUE["📋 PRD issue in your dev-loop fork<br/>label: prd:needs-review"] --> GATE1
+    ISSUE["📋 PRD issue in your dev-loop hub<br/>label: prd:needs-review"] --> GATE1
     ISSUE -.->|"refine: / prd:refine · /fire"| R7["R7 · PRD Refiner<br/>event (/fire) + reconcile"]
     R7 -.updates the PRD.-> ISSUE
     GATE1{"👤 OWNER approves PRD<br/>prd:approved"}:::human -->|"/fire · owner action"| R5PLAN

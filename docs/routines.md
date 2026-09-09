@@ -23,14 +23,18 @@
 
 | Placeholder | Meaning | Example |
 |---|---|---|
-| `{{HUB}}` | Your fork's slug (the hub repo) | `yourname/dev-loop` |
+| `{{HUB}}` | Your copy's slug (the hub repo) | `yourname/dev-loop` |
 | `{{OWNER_GITHUB}}` | The owner's GitHub handle | `yourname` |
 | `{{NOTIF_CHANNEL}}` | Slack notifications channel (name + ID) | `#claude-dev-loop` (`C0XXXXXXX`) |
 | `{{REVIEW_CHANNEL}}` | Slack review channel — team-review mode only | `#eng-reviews` (`C0YYYYYYY`) |
 | `{{REVIEW_MODE_BLOCK}}` | Gate instructions per the mode in CLAUDE.md (see §Gates) | — |
 | `{{TZ}}` | IANA timezone of the owner | `America/Bogota` |
 | `{{CONTRIBUTORS}}` | GitHub handles for the sprint deck (R6) | `alice, bob, carol` |
+| `{{ORG_QUALIFIER}}` | GitHub search qualifier for where the target repos live: `org:<org>` for an organization, `user:<user>` for a personal account | `org:acme` / `user:dana-dev` |
 | `{{CRON_R*}}` | UTC cron per routine, computed from `{{TZ}}` + working window | `5 12,15,18 * * 1-6` |
+
+> `{{REVIEW_MODE_BLOCK}}` is injected **standalone**, right after the §0 preamble, in the R2 and
+> R5 prompts (never mid-sentence).
 
 ---
 
@@ -65,6 +69,11 @@ REVIEWER MENTIONS (mandatory, CRITICAL — team-review mode): every mention of a
 MUST be a member ID `<@Uxxx>`, NEVER plain text `@name`. Plain text does NOT notify → the reviewer
 never sees the message and the gate stalls indefinitely. Use the IDs from CLAUDE.md's Review roster.
 RE-READ every review request before posting: if you see `@` followed by plain text, fix it to `<@Uxxx>`.
+
+CONNECTOR FAILURES (fail loud, never silent): if a connector (Slack/Granola/Drive) errors or is
+missing mid-run, do NOT end the run silently. Report what failed and what was skipped to the
+notifications channel if Slack works; if Slack itself is down, leave the report as a comment on
+the most relevant issue in the hub. A silent failed run looks identical to "no work found".
 ```
 
 ---
@@ -146,6 +155,14 @@ the `/fire` API** (the routine's "Call via API" trigger). The fire's `text` arri
 `#<n>` or the PR's `owner/repo#n` slug. The routine re-reads the **authoritative state on GitHub**
 and applies compare-and-set (each routine's FAST-PATH block formalizes this).
 
+> **Wiring:** the `/fire` path is not automatic — enable the **"Call via API"** trigger on
+> R1/R4/R5/R7 in the routines UI and connect something to it. For the GitHub-side actions
+> (approve/refine), the optional workflow
+> [`.github/workflows/fire-routines.yml`](../.github/workflows/fire-routines.yml) does it
+> (secrets `FIRE_URL_R5`/`FIRE_URL_R7`). Slack-side actions (triage reply, `#dev-loop` tag) need
+> your own automation — or the reconcile cron covers them. **Unwired `/fire` = the loop still
+> works, at cron latency.**
+
 Owner action → routine map:
 
 | Owner action | Effect on GitHub | Routine |
@@ -173,8 +190,8 @@ routine's prompt (below).
 
 ### 4) Cron = reconcile (safety net)
 Cron stopped being the driver: it now **catches missed events** and does sweeps, spread across
-your working window, with one rest day (no runs — the agents don't work that day). Crons in
-**UTC**, computed from `{{TZ}}`:
+your working window, excluding your non-working days (no runs then — the agents rest too). Crons
+in **UTC**, computed from `{{TZ}}`:
 
 | Routine | Cron (UTC) | Local time | Primary trigger (event) |
 |---|---|---|---|
@@ -197,6 +214,11 @@ your working window, with one rest day (no runs — the agents don't work that d
 > schedule trigger in the UI** with the corrected `dow` for those hours. The setup wizard flags
 > this when it applies to your window.
 
+> **⚠️ DST:** cron expressions are fixed UTC, but many timezones shift ±1h twice a year — your
+> "08:00 local" run drifts to 07:00 or 09:00 for half the year. Harmless for the loop (everything
+> is idempotent), but pick mid-window times that tolerate ±1h, or update the crons at DST
+> changes. The wizard warns you if `{{TZ}}` observes DST.
+
 ### Native GitHub triggers (Issue: Labeled on the hub)
 Native GitHub triggers are **UI-only** (no API): configure them at **claude.ai/code/routines**,
 per repo, with the **Claude GitHub App** installed on the repo. They react to the **label event**
@@ -215,7 +237,7 @@ on the issue (not to comments).
 | Trigger (filter) | Fires | Status |
 |---|---|---|
 | `Labels is one of prd:plan-approved` | **R2** | ✅ core |
-| `Labels is one of prd:arch-review` | **R5** (Gate B) | ⭐ recommended (agent→agent: R2 sets the label → R5 reacts, no double-fire) |
+| `Labels is one of prd:arch-review` | **R5** (Gate B) | ⭐ recommended (agent→agent: R2 sets the label → R5 reacts, no double-fire). Known accepted cost: R5 also re-sets this label itself on a **downgrade** (`ready-for-review → arch-review`), which self-fires one extra idempotent run — bounded and rare, and it usefully re-opens Gate B immediately |
 | `Labels is one of prd:approved` | **R5** (Gate A) | optional — fallback if you label manually on GitHub without `/fire` (redundant with the `/fire` → double-fire) |
 | `Labels is one of prd:refine` | **R7** | optional — same case as `prd:approved` |
 
@@ -226,8 +248,11 @@ on the issue (not to comments).
 
 ## Gates — the `{{REVIEW_MODE_BLOCK}}`
 
-The setup wizard injects ONE of these two blocks wherever a prompt says `{{REVIEW_MODE_BLOCK}}`,
-per the mode configured in CLAUDE.md:
+The setup wizard injects ONE of these two blocks at the `{{REVIEW_MODE_BLOCK}}` slot (standalone,
+right after the §0 preamble) in R5 and R2, per the mode configured in CLAUDE.md. Exception: in
+**self-review mode, R2 gets only this one-liner instead** (the adversarial gate belongs to R5,
+not to the implementer): `REVIEW MODE: self-review — you do NOT review your own PRs; open them
+and leave them in the gate, R5 runs the Gate B review.`
 
 **Team-review mode:**
 ```
@@ -303,9 +328,14 @@ PHASE A — TRIAGE (process ONLY TODAY's meetings, one triage per day):
 4. Stop. Do NOT generate PRDs yet.
 
 PHASE B — BUILDER (for each triage issue labeled triage:pending):
-1. Read the Slack thread. Interpret the owner's selection, including GROUPINGS "[a,b]" → a single
-   PRD combining those candidates (remember: several meetings/candidates can converge into ONE PRD).
-   - If they haven't answered yet: stop (retry later). If >8h passed, re-ping once.
+1. Read the owner's selection from EITHER surface: the Slack thread, OR a comment on the triage
+   issue itself starting with "PRD:", "all" or "none" (left e.g. via scripts/dl.sh
+   resolve-triage). The most recent decision wins. Interpret it including GROUPINGS "[a,b]" → a
+   single PRD combining those candidates (remember: several meetings/candidates can converge
+   into ONE PRD).
+   - If they haven't answered on either surface: stop (retry later). If >8h passed, re-ping once
+     — idempotently: first check the thread for your own re-ping marker "⏰ reminder sent"; if
+     it's there, don't ping again.
 2. SEMANTIC DEDUP (by TOPIC, not just by key): before creating a PRD for a candidate, search for
    related OPEN PRDs (by the candidate's keywords/title/repo). If one covers the same topic
    (it may come from another source, e.g. a Slack-created PRD about the same thing):
@@ -401,6 +431,8 @@ ALSO — UNIFIABLE PRD DETECTION (each run):
 ```
 [§0 preamble here]
 
+{{REVIEW_MODE_BLOCK}}
+
 GOAL: implement the PRDs whose PLAN already passed Gate A (R5). A PRD may need SEVERAL PRs
 (implementation plan, possibly across repos) — PRD → PR is 1:N.
 1. List issues in the hub with label prd:plan-approved or prd:building (building ones may still
@@ -423,9 +455,9 @@ GOAL: implement the PRDs whose PLAN already passed Gate A (R5). A PRD may need S
         close before all PRs are in) + link to this session.
       - ENABLE Auto-fix on the PR (EXCEPT repos flagged "no Auto-fix" in the hub's CLAUDE.md).
       - Check the item ☑ in the PRD's checklist and comment the PR link on the issue.
-      - Request the review per {{REVIEW_MODE_BLOCK}} (in team-review mode, post the request in
-        {{REVIEW_CHANNEL}} with reviewers as <@Uxxx>; in self-review mode the Gate B review runs
-        under R5 — just leave the PR in the gate).
+      - Hand the PR to the gate per the REVIEW MODE above: in team-review mode, post the review
+        request now (reviewers as <@Uxxx>); in self-review mode do nothing extra — R5 runs the
+        Gate B review itself.
    e. When ALL plan items have an open PR → relabel prd:building → prd:arch-review.
       (If items remain, leave it in prd:building for the next run.)
 3. NEVER merge. NEVER push to main/master. Only claude/ branches + PR.
@@ -505,6 +537,14 @@ For each issue labeled prd:arch-review:
 3. RECONCILE (applies to ANY issue with a prd:* label, not just arch-review):
    - CLOSE (advance to done): if ALL plan PRs are merged → relabel to prd:done, comment the
      closing summary (PRs with links) and CLOSE the issue (reason: completed).
+   - NOTIFY THE SLACK ORIGIN (on close, done or discarded): if the PRD's "## Sources" carries the
+     marker <!-- dev-loop-origin: channel=<CID> ts=<THREAD_TS> -->, reply in THAT origin thread:
+     "✅ *Resolved* — <1-line summary>, closed on <date>" (or "🗑️ *Discarded* — <reason>").
+     Idempotency: skip if the issue already has an "origin-slack-notified:" comment; add that
+     marker comment after posting. SAFETY GUARD: if the marker is missing/ambiguous, or the only
+     thread you can find is an internal gate thread, do NOT post to a doubtful thread — leave the
+     text in {{NOTIF_CHANNEL}} instead (also do this when the API rejects the post, e.g. external
+     Slack Connect channels).
    - DOWNGRADE (the label is NOT monotonic; state never over-reports progress): if a PRD is in
      prd:ready-for-review but RE-CHECKING its PRs against GitHub the set NO LONGER passes the
      aggregate gate — at least one open PR that did NOT pass (no APPROVED posterior to its last
@@ -660,7 +700,7 @@ SCOPE:
 - Contributors (GitHub): {{CONTRIBUTORS}}.
 - Window: PRs merged in the last 7 days (this week's working days).
 - Repos: search the WHOLE org/user with GitHub search, not a single repo:
-  `is:pr is:merged org:{{ORG}} author:<user> merged:>=<YYYY-MM-DD>` for each contributor.
+  `is:pr is:merged {{ORG_QUALIFIER}} author:<user> merged:>=<YYYY-MM-DD>` for each contributor.
 
 STEPS:
 1. Collect each contributor's merged PRs in the window. For EACH PR: READ title, description and
