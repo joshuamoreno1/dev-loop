@@ -61,14 +61,20 @@ you verify before you claim, and you live in the terminal.
 
 ## Target repos of the loop
 <!-- SETUP:REPOS — filled by setup-dev-loop. One row per target repo: name, stack, purpose,
-base branch (detect main vs master), build/test commands, and any per-repo warnings
+base branch (detect main vs master), build/test commands, CI status (what actually runs on PRs:
+lint/tests/build/security/deploy — audited by the wizard), and any per-repo warnings
 (e.g. "comments trigger automation — NO Auto-fix"). -->
-| Repo | Stack | Purpose | Base branch | Build & test |
-|------|-------|---------|-------------|--------------|
-| _(run the setup wizard)_ | | | | |
+| Repo | Stack | Purpose | Base branch | Build & test | CI on PRs |
+|------|-------|---------|-------------|--------------|-----------|
+| _(run the setup wizard)_ | | | | | |
 
 > ⚠️ Repos where PR comments trigger automation (IaC plan/apply bots, comment-driven CI):
 > **never enable Auto-fix** on them. List them here explicitly.
+
+> ⚠️ **CI is the loop's only deterministic gate for generated code** — the agent reviews are
+> judgment, the pipeline is the guarantee. On repos marked with thin CI above, treat "green" with
+> extra suspicion in the gates and in your final review, and prioritize completing their
+> pipeline (lint + tests + build on every PR, minimum).
 
 ## Review roster (Gates A and B)
 <!-- SETUP:REVIEW — filled by setup-dev-loop. Pick ONE mode. -->

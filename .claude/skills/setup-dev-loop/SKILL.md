@@ -49,6 +49,15 @@ Ask in this order, one block at a time. Offer sensible defaults; record answers.
 - Target repos: for each — name, stack, one-line purpose, base branch (offer to detect via
   `gh repo view <repo> --json defaultBranchRef`), build/test commands, and whether PR comments
   trigger automation there (IaC plan/apply bots → flag as **no Auto-fix**).
+- **CI/CD audit per target repo (do this yourself, don't just ask):** list its workflows
+  (`gh api repos/<owner>/<repo>/actions/workflows` or read `.github/workflows/`) and check what
+  actually runs on PRs — lint, typecheck, tests, build, security scanning, deploy. Then be
+  straight with the owner: **the loop's PR quality is capped by each repo's CI** — the agent
+  gates are probabilistic judgment; the pipeline is the only deterministic review the generated
+  code gets, and it's what Auto-fix converges against. For every repo with thin or no CI, warn
+  explicitly and recommend fixing the pipeline BEFORE (or alongside) pointing the loop at it —
+  even offer to make "add CI to <repo>" one of the loop's first PRDs. Record the per-repo CI
+  status in the CLAUDE.md repos table.
 - Use the Project v2 board? (yes/no). If yes: org-level or user-level board.
 
 **2. Slack**
@@ -82,8 +91,8 @@ Confirm the full summary back to the owner before Phase 2.
 ## Phase 2 — Configure (automated)
 
 1. **Fill `CLAUDE.md`:** replace every `<!-- SETUP:* -->` section with the interview values
-   (LANGUAGE, REPOS table incl. no-Auto-fix flags, REVIEW mode + roster, SLACK channels, SOURCES,
-   TEAM, SCHEDULE). Keep the surrounding structure intact.
+   (LANGUAGE, REPOS table incl. no-Auto-fix flags and per-repo CI status, REVIEW mode + roster,
+   SLACK channels, SOURCES, TEAM, SCHEDULE). Keep the surrounding structure intact.
 2. **Compute the UTC crons** from timezone + window + working days, keeping each routine's
    cadence from the table in `docs/routines.md` (R1 3×/day, R2 2×/day, R4 4×/day, R5 6×/day,
    R7 4×/day, R0 5×/day, R3 1× morning, R6 weekly). Use "odd" minutes (not :00). ⚠️ If the window
@@ -145,5 +154,6 @@ Present these as a checklist and wait for confirmation on each before ticking it
 5. If `/fire` was wired: add the `prd:refine` label to the scratch issue and confirm the
    fire-routines workflow run fires R7 (Actions tab → green run).
 6. Hand over: summarize what's live, the daily interaction model (approve = label, refine =
-   `refine:` comment, intake = `#dev-loop` tag, merge = theirs), and where to watch usage
-   (claude.ai/code/routines).
+   `refine:` comment, intake = `#dev-loop` tag, merge = theirs), where to watch usage
+   (claude.ai/code/routines) — and repeat the CI warning list from the interview: which target
+   repos have thin pipelines and what that means for the PRs the loop opens there.
