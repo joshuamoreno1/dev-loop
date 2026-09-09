@@ -1,0 +1,118 @@
+name: Sync labels → Project Status
+
+# Moves the issue's card in the "dev-loop" Project v2 board according to the state
+# machine label. The Actions GITHUB_TOKEN cannot write org Projects v2, hence the
+# DEVLOOP_PROJECT_TOKEN secret (fine-grained PAT with Projects read-write).
+#
+# The board has ONE column per state (see scripts/setup-project.sh): the DESCRIPTION
+# of each Status column is exactly the label (e.g. "Plan review" column → description
+# "prd:plan-review"). This workflow resolves the target column by looking up the option
+# whose description == the triggering label, at runtime — no hardcoded option IDs, so
+# it survives board recreations. The project and Status field IDs are also resolved at
+# runtime from the project number.
+#
+# Setup:
+#   - Repository variable DEVLOOP_PROJECT_NUMBER: the Project v2 number (org- or user-level board).
+#   - Repository secret DEVLOOP_PROJECT_TOKEN: fine-grained PAT with Projects read-write.
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+env:
+  PROJECT_NUMBER: ${{ vars.DEVLOOP_PROJECT_NUMBER }}
+
+jobs:
+  sync-status:
+    if: startsWith(github.event.label.name, 'prd:') || startsWith(github.event.label.name, 'triage:')
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.DEVLOOP_PROJECT_TOKEN }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      LABEL: ${{ github.event.label.name }}
+      PROJECT_OWNER: ${{ github.repository_owner }}
+    steps:
+      - name: Resolve the column whose description == the label
+        id: map
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::DEVLOOP_PROJECT_TOKEN not configured; skipping sync"
+            echo "option=" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ -z "$PROJECT_NUMBER" ]; then
+            echo "::warning::DEVLOOP_PROJECT_NUMBER repository variable not configured; skipping sync"
+            echo "option=" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # triage:done is board-equivalent to Done (it has no column of its own).
+          MATCH="$LABEL"; [ "$LABEL" = "triage:done" ] && MATCH="prd:done"
+          # repositoryOwner resolves both org- and user-level boards.
+          RESP=$(gh api graphql -f query='
+            query($o: String!, $n: Int!) {
+              repositoryOwner(login: $o) {
+                ... on ProjectV2Owner {
+                  projectV2(number: $n) {
+                    id
+                    field(name: "Status") {
+                      ... on ProjectV2SingleSelectField { id options { id description } }
+                    }
+                  }
+                }
+              }
+            }' -f o="$PROJECT_OWNER" -F n="$PROJECT_NUMBER")
+          project_id=$(jq -r '.data.repositoryOwner.projectV2.id // empty' <<<"$RESP")
+          field_id=$(jq -r '.data.repositoryOwner.projectV2.field.id // empty' <<<"$RESP")
+          option=$(jq -r --arg m "$MATCH" \
+            '.data.repositoryOwner.projectV2.field.options[] | select(.description == $m) | .id' \
+            <<<"$RESP" | head -n1)
+          if [ -z "$project_id" ] || [ -z "$field_id" ]; then
+            echo "::error::Could not resolve project #$PROJECT_NUMBER or its Status field for owner $PROJECT_OWNER"
+            exit 1
+          fi
+          {
+            echo "project_id=$project_id"
+            echo "field_id=$field_id"
+            echo "option=$option"
+          } >> "$GITHUB_OUTPUT"
+          [ -z "$option" ] && echo "::notice::label '$LABEL' has no matching column (description); the card is not moved"
+
+      - name: Update project item status
+        if: steps.map.outputs.option != ''
+        env:
+          PROJECT_ID: ${{ steps.map.outputs.project_id }}
+          FIELD_ID: ${{ steps.map.outputs.field_id }}
+          OPTION_ID: ${{ steps.map.outputs.option }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::DEVLOOP_PROJECT_TOKEN not configured; skipping sync"
+            exit 0
+          fi
+          # Adds the card to the project directly (idempotent: if it already exists, the
+          # existing item is returned). We don't rely on the UI auto-add, which proved
+          # not to add the loop's issues.
+          ISSUE_NODE_ID=$(gh api graphql -f query='
+            query($owner: String!, $repo: String!, $number: Int!) {
+              repository(owner: $owner, name: $repo) { issue(number: $number) { id } }
+            }' -f owner="${GITHUB_REPOSITORY_OWNER}" -f repo="${GITHUB_REPOSITORY#*/}" \
+               -F number="$ISSUE_NUMBER" --jq '.data.repository.issue.id')
+          ITEM_ID=$(gh api graphql -f query='
+            mutation($project: ID!, $content: ID!) {
+              addProjectV2ItemById(input: { projectId: $project, contentId: $content }) {
+                item { id }
+              }
+            }' -f project="$PROJECT_ID" -f content="$ISSUE_NODE_ID" \
+            --jq '.data.addProjectV2ItemById.item.id')
+          if [ -z "$ITEM_ID" ]; then
+            echo "::error::Could not add/fetch the card for issue #$ISSUE_NUMBER in project $PROJECT_NUMBER"
+            exit 1
+          fi
+          gh api graphql -f query='
+            mutation($project: ID!, $item: ID!, $field: ID!, $option: String!) {
+              updateProjectV2ItemFieldValue(input: {
+                projectId: $project, itemId: $item, fieldId: $field,
+                value: { singleSelectOptionId: $option }
+              }) { projectV2Item { id } }
+            }' -f project="$PROJECT_ID" -f item="$ITEM_ID" -f field="$FIELD_ID" \
+               -f option="$OPTION_ID"
